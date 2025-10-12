@@ -18,10 +18,10 @@ typedef struct {
 
 // Função para exibir o nome do jogo
 void exibe_nome_jogo() {
-    printf("------------------------------------------------------------------\n");
-    printf("-                        SUPER TRUNFO C                          -\n");
-    printf("-                       JOGO DAS CIDADES                         -\n");
-    printf("------------------------------------------------------------------\n\n");
+    printf("-------------------------------------------------------------------\n");
+    printf("-                        SUPER TRUNFO C                           -\n");
+    printf("-                       JOGO DAS CIDADES                          -\n");
+    printf("-------------------------------------------------------------------\n\n");
 }
 
 // Função principal
