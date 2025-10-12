@@ -14,6 +14,8 @@ typedef struct {
     float area;                 // Área em km²
     float pib;                  // PIB em bilhões de reais
     int num_pontos_turisticos;  // Número de pontos turísticos
+    float densidade_populacional; // Densidade populacional (população/área)
+    float pib_per_capita;        // PIB per capita (PIB/população)
 } Carta;
 
 // Função para exibir o nome do jogo
@@ -44,7 +46,7 @@ int main() {
 
     printf("Informe o Nome da Cidade: ");
     fgets(cartas[0].nome_cidade, sizeof(cartas[0].nome_cidade), stdin);
-    cartas[0].nome_cidade[strcspn(cartas[0].nome_cidade, "\n")] = '\0'; // Remove o \n
+    cartas[0].nome_cidade[strcspn(cartas[0].nome_cidade, "\n")] = '\0';
 
     printf("Informe a População: ");
     scanf("%d", &cartas[0].populacao);
@@ -60,7 +62,11 @@ int main() {
 
     getchar(); // Limpa o buffer antes do próximo fgets
 
-        // Exibição dos dados das cartas para verificação
+    // Cálculo dos campos derivados para carta 1 (densidade populacional e PIB per capita)
+    cartas[0].densidade_populacional = cartas[0].populacao / cartas[0].area;
+    cartas[0].pib_per_capita = (cartas[0].pib * 100000000 ) / cartas[0].populacao;
+
+    // Exibição dos dados das cartas para verificação
 
     printf("\nExibição dos dados das cartas para verificação\n");
 
@@ -73,6 +79,8 @@ int main() {
     printf("Área: %.2f km²\n", cartas[0].area);
     printf("PIB: %.2f bilhões de reais\n", cartas[0].pib);
     printf("Número de Pontos Turísticos: %d\n", cartas[0].num_pontos_turisticos);
+    printf("Densidade Populacional: %.0f hab/km²\n", cartas[0].densidade_populacional);
+    printf("PIB per capita: R$ %.2f\n", cartas[0].pib_per_capita);
     printf("-----------------------------------\n");
 
     // Cadastro da carta 2
@@ -102,6 +110,12 @@ int main() {
 
     printf("\n-----------------------------------\n");
 
+    getchar(); // Limpa o buffer antes do próximo fgets
+
+    // Cálculo dos campos derivados para carta 1 (densidade populacional e PIB per capita)
+    cartas[1].densidade_populacional = cartas[1].populacao / cartas[1].area;
+    cartas[1].pib_per_capita = (cartas[1].pib * 100000000 ) / cartas[1].populacao;
+
     // Exibição dos dados das cartas para verificação
 
     printf("\nExibição dos dados das cartas para verificação\n");
@@ -115,6 +129,8 @@ int main() {
     printf("Área: %.2f km²\n", cartas[1].area);
     printf("PIB: %.2f bilhões de reais\n", cartas[1].pib);
     printf("Número de Pontos Turísticos: %d\n", cartas[1].num_pontos_turisticos);
+    printf("Densidade Populacional: %.0f hab/km²\n", cartas[1].densidade_populacional);
+    printf("PIB per capita: R$ %.2f\n", cartas[1].pib_per_capita);
     printf("-----------------------------------\n");
 
     return 0;
