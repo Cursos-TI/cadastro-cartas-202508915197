@@ -53,16 +53,10 @@ typedef struct Jogador {
 } Jogador;
 typedef struct Estatisticas {
     int jogos_jogados;                // partidas iniciadas
-    int vitorias[MAX_JOGADORES];      // vitórias por jogador
+    int vitorias[MAX_JOGADORES];      // vitórias por jogador (0=humano, 1=jogador2/computador)
+    int computador_vitorias;          // vitórias do computador (específico para modo 1xComputador)
     int empates;                      // empates entre partidas
 } Estatisticas;
-
-// Estrutura para armazenar estatísticas gerais entre partidas contra computador.
-typedef struct {
-    int jogos_jogados;                // partidas iniciadas
-    int vitorias[2];                  // vitórias por jogador (0=humano, 1=computador)
-    int empates;                      // empates entre partidas
-} EstatisticasComputador;
 
 // Funções de cor no terminal (compatível Windows / Unix)
 // Implementação específica por plataforma:
@@ -176,9 +170,14 @@ void jogar_partida_1xComputador(Carta *baralho, int n_cartas, Estatisticas *esta
 
     // Atualiza estatísticas gerais
     estat->jogos_jogados++;
-    if (vitorias_turno[0] > vitorias_turno[1]) estat->vitorias[0]++;
-    else if (vitorias_turno[1] > vitorias_turno[0]) estat->vitorias[1]++;
-    else estat->empates++;
+    if (vitorias_turno[0] > vitorias_turno[1]) {
+        estat->vitorias[0]++; // vitória do humano
+    } else if (vitorias_turno[1] > vitorias_turno[0]) {
+        estat->vitorias[1]++; // vitória do jogador 2/computador
+        estat->computador_vitorias++; // contador específico para computador
+    } else {
+        estat->empates++;
+    }
 
     // Exibe resultado final
     set_color(31);
@@ -808,7 +807,8 @@ void exibir_estatisticas(const Estatisticas *e) {
     printf("Estatísticas do jogo:\n");
     printf("Jogos jogados: %d\n", e->jogos_jogados);
     printf("Vitórias Jogador 1: %d\n", e->vitorias[0]);
-    printf("Vitórias Jogador 2: %d\n", e->vitorias[1]);
+    printf("Vitórias Jogador 2/Computador: %d\n", e->vitorias[1]);
+    printf("Vitórias específicas do Computador: %d\n", e->computador_vitorias);
     printf("Empates: %d\n", e->empates);
 }
 
