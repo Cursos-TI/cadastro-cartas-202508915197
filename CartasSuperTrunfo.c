@@ -366,7 +366,8 @@ void cadastrar_carta(Carta *c) {
         buf[strcspn(buf, "\n")] = '\0';
         if (strcmp(buf, "sair") == 0) return;
         if (valida_codigo(buf)) {
-            snprintf(c->codigo, sizeof(c->codigo), "%s", buf);
+            /* copia segura limitando ao tamanho do destino menos 1 e garantindo '\0' */
+            snprintf(c->codigo, sizeof(c->codigo), "%.*s", (int)sizeof(c->codigo) - 1, buf);
             break;
         }
         printf("Código inválido.\n");
@@ -379,8 +380,9 @@ void cadastrar_carta(Carta *c) {
         buf[strcspn(buf, "\n")] = '\0';
         if (strcmp(buf, "sair") == 0) return;
         if (valida_nome(buf)) {
-            strncpy(c->nome_cidade, buf, sizeof(c->nome_cidade));
-            snprintf(c->nome_cidade, sizeof(c->nome_cidade), "%s", buf);
+            /* copiar de forma segura garantindo terminação nula e evitando warnings */
+            strncpy(c->nome_cidade, buf, sizeof(c->nome_cidade) - 1);
+            c->nome_cidade[sizeof(c->nome_cidade) - 1] = '\0';
             break;
         }
         printf("Nome inválido.\n");
