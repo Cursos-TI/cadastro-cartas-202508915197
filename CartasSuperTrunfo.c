@@ -1,17 +1,14 @@
 // Super Trunfo C - Jogo das Cidades
 
 // Regras:
-// 1. O jogo é jogado entre dois jogadores.
+// 1. O jogo é jogado entre dois jogadores ou contra o computador.
 // 2. Cada jogador começa com 5 cartas.
 // 3. Em cada rodada, um jogador escolhe uma característica para comparar.
 // 4. O jogador com a maior (ou menor) característica ganha a rodada e leva a carta do oponente.
 // 5. O jogo termina quando um jogador fica sem cartas.
 // 6. O jogador com mais cartas no final é o vencedor.
-
-// Pontos negativos:
-// - O jogo pode ser muito dependente da sorte na distribuição das cartas.
-// - Estratégias limitadas, pois os jogadores não podem ver as cartas do oponente.
-// - Pode haver um desequilíbrio se um jogador tiver cartas significativamente melhores.
+// 7. Estatísticas de vitórias, empates e jogos são mantidas entre partidas.
+// 8. O jogo suporta salvar e carregar cartas de um arquivo binário.
 
 // Bibliotecas necessarias
 #include <stdio.h>
@@ -24,6 +21,10 @@
 // Constantes do programa para escabilidade
 #define MAX_CARTAS 100
 #define MAX_JOGADORES 2
+typedef struct Jogador Jogador;
+typedef struct Carta Carta;
+typedef struct Estatisticas Estatisticas;
+
 #define CARTAS_POR_JOGADOR 5
 #define ARQUIVO_CARTAS "cartas.bin"
 
@@ -43,23 +44,29 @@ typedef struct Carta {
     float super_poder;           // valor normalizado (0-100) (derivado)
 } Carta;
 
-// Estrutura que representa o estado de um jogador durante uma partida.
-typedef struct {
+// Estrutura genérica para representar o estado de um jogador (humano ou computador).
+typedef struct Jogador {
     Carta cartas[CARTAS_POR_JOGADOR]; // cartas em mãos
     int vitorias;                     // vitórias na partida atual
     int empates;                      // empates na partida atual
     int cartas_restantes;             // quantas cartas ainda tem
 } Jogador;
-
-// Estrutura para armazenar estatísticas gerais entre partidas.
-typedef struct {
+typedef struct Estatisticas {
     int jogos_jogados;                // partidas iniciadas
     int vitorias[MAX_JOGADORES];      // vitórias por jogador
     int empates;                      // empates entre partidas
 } Estatisticas;
 
+// Estrutura para armazenar estatísticas gerais entre partidas contra computador.
+typedef struct {
+    int jogos_jogados;                // partidas iniciadas
+    int vitorias[2];                  // vitórias por jogador (0=humano, 1=computador)
+    int empates;                      // empates entre partidas
+} EstatisticasComputador;
+
 // Funções de cor no terminal (compatível Windows / Unix)
 // Implementação específica por plataforma:
+
 #ifdef _WIN32
 #include <windows.h>
 // set_color: define cor no console Windows
@@ -72,6 +79,126 @@ void set_color(int color) { printf("\033[%dm", color); }
 // reset_color: reseta cor ANSI
 void reset_color() { printf("\033[0m"); }
 #endif
+
+// Function prototypes
+void embaralhar_cartas(Carta *cartas, int n);
+void distribuir_cartas(Carta *baralho, int n_cartas, Jogador *jogadores, int modo_computador);
+void exibe_menu_batalha(void);
+void exibir_cartas_jogador(const Jogador *j, int jogador_id);
+void exibir_cartas_jogador_computador(const Jogador *j, int jogador_id, int eh_computador);
+void limpar_buffer_stdin(void);
+void remover_carta(Jogador *j, int idx);
+void exibir_resultado_turno(float sp1, float sp2, int *v1, int *v2, int *empates);
+void exibir_resultado_turno_computador(float sp1, float sp2, int *v1, int *v2, int *empates);
+void exibir_cartas_resumido(const Carta *cartas, int n);
+void exibir_carta(const Carta *c);
+void apagar_carta(Carta *cartas, int *n_cartas);
+static int escolher_carta_comandos(Jogador *j, int jogador_id, int *cmd);
+
+// implementação das funções
+// apos decisao de qual tipo de partida em menu antes da batalha quue toma decisao para qual caminho seguir
+
+
+// Implementação: partida humano x computador
+void jogar_partida_1xComputador(Carta *baralho, int n_cartas, Estatisticas *estat) {
+    if (n_cartas < CARTAS_POR_JOGADOR * MAX_JOGADORES) {
+        printf("Não há cartas suficientes para iniciar a partida.\n");
+        return;
+    }
+
+    // Inicializa jogadores (0 = humano, 1 = computador)
+    Jogador jogadores[MAX_JOGADORES];
+    for (int i = 0; i < MAX_JOGADORES; ++i) {
+        jogadores[i].cartas_restantes = 0;
+        jogadores[i].vitorias = 0;
+        jogadores[i].empates = 0;
+    }
+
+    // Embaralha e distribui
+    embaralhar_cartas(baralho, n_cartas);
+    distribuir_cartas(baralho, n_cartas, jogadores, 1); // modo computador
+
+    int vitorias_turno[2] = {0, 0};
+    int empates_turno = 0;
+
+    // Loop dos turnos
+    for (int turno = 0; turno < CARTAS_POR_JOGADOR; ++turno) {
+        exibe_menu_batalha();
+        // Mostra apenas cartas do humano; computador só mostra contagem
+        exibir_cartas_jogador_computador(&jogadores[0], 0, 0);
+        set_color(31); // Cor vermelha para o computador
+        printf("Computador possui %d cartas.\n", jogadores[1].cartas_restantes);
+        reset_color();
+
+        // Humano escolhe (comandos suportados)
+        int cmd_h = 0;
+        int escolha_h = escolher_carta_comandos(&jogadores[0], 0, &cmd_h);
+        if (cmd_h == 2) {
+            limpar_buffer_stdin();
+            memset(estat, 0, sizeof(*estat));
+            printf("Retornando ao menu principal. Estatísticas da partida atual descartadas.\n");
+            return;
+        }
+        if (cmd_h == 1) {
+            // Humano desistiu
+            printf("Humano desistiu do turno! Computador vence este turno.\n");
+            vitorias_turno[1]++;
+            if (jogadores[0].cartas_restantes > 0) remover_carta(&jogadores[0], 0);
+            if (jogadores[1].cartas_restantes > 0) remover_carta(&jogadores[1], 0);
+            continue;
+        }
+
+        // Computador escolhe (estratégia simples: carta aleatória)
+        int escolha_c;
+        if (jogadores[1].cartas_restantes > 0) {
+            escolha_c = rand() % jogadores[1].cartas_restantes;
+            // Informa escolha do computador (nome da cidade) ao jogador
+            printf("Computador jogou: %s (carta %d)\n", jogadores[1].cartas[escolha_c].nome_cidade, escolha_c + 1);
+        } else {
+            printf("Computador não tem cartas restantes!\n");
+            break; // Sai do loop se não há cartas
+        }
+
+        // Compara super poderes
+        float sp_h = jogadores[0].cartas[escolha_h].super_poder;
+        float sp_c = jogadores[1].cartas[escolha_c].super_poder;
+        exibir_resultado_turno_computador(sp_h, sp_c, &vitorias_turno[0], &vitorias_turno[1], &empates_turno);
+
+        // Remove cartas jogadas (remover maior índice primeiro para evitar deslocamento incorreto)
+        if (escolha_h > escolha_c) {
+            remover_carta(&jogadores[0], escolha_h);
+            remover_carta(&jogadores[1], escolha_c);
+        } else {
+            remover_carta(&jogadores[1], escolha_c);
+            remover_carta(&jogadores[0], escolha_h);
+        }
+    }
+
+    // Atualiza estatísticas gerais
+    estat->jogos_jogados++;
+    if (vitorias_turno[0] > vitorias_turno[1]) estat->vitorias[0]++;
+    else if (vitorias_turno[1] > vitorias_turno[0]) estat->vitorias[1]++;
+    else estat->empates++;
+
+    // Exibe resultado final
+    set_color(31);
+    printf("Resultado final da partida (Humano x Computador):\n");
+    reset_color();
+
+    if (vitorias_turno[0] > vitorias_turno[1]) {
+        set_color(32);
+        printf("Humano venceu a partida!\n");
+        reset_color();
+    } else if (vitorias_turno[1] > vitorias_turno[0]) {
+        set_color(34);
+        printf("Computador venceu a partida!\n");
+        reset_color();
+    } else {
+        set_color(36);
+        printf("A partida terminou empatada!\n");
+        reset_color();
+    }
+}
 
 // Utilitários de entrada e validação
 
@@ -239,8 +366,7 @@ void cadastrar_carta(Carta *c) {
         buf[strcspn(buf, "\n")] = '\0';
         if (strcmp(buf, "sair") == 0) return;
         if (valida_codigo(buf)) {
-            strncpy(c->codigo, buf, sizeof(c->codigo));
-            c->codigo[sizeof(c->codigo)-1] = '\0';
+            snprintf(c->codigo, sizeof(c->codigo), "%s", buf);
             break;
         }
         printf("Código inválido.\n");
@@ -254,7 +380,7 @@ void cadastrar_carta(Carta *c) {
         if (strcmp(buf, "sair") == 0) return;
         if (valida_nome(buf)) {
             strncpy(c->nome_cidade, buf, sizeof(c->nome_cidade));
-            c->nome_cidade[sizeof(c->nome_cidade)-1] = '\0';
+            snprintf(c->nome_cidade, sizeof(c->nome_cidade), "%s", buf);
             break;
         }
         printf("Nome inválido.\n");
@@ -385,7 +511,6 @@ void apagar_carta(Carta *cartas, int *n_cartas) {
 
 void embaralhar_cartas(Carta *cartas, int n) {
     if (n <= 1) return;
-    srand((unsigned)time(NULL));
     for (int i = n - 1; i > 0; --i) {
         int j = rand() % (i + 1);
         Carta tmp = cartas[i];
@@ -396,39 +521,193 @@ void embaralhar_cartas(Carta *cartas, int n) {
 
 // animacao de entrega cartas:
 // - Pequena mensagem / pausa para simular entrega de carta.
+// Exibe uma mensagem animada simulando a entrega de uma carta a um jogador.
 
-void animacao_entrega_cartas(int jogador, int carta_idx) {
-    set_color(jogador == 0 ? 32 : 34);
-    printf("Entregando carta %d ao Jogador %d...\n", carta_idx + 1, jogador + 1);
+// Parâmetros:
+// jogador       - índice do jogador (0 = Jogador 1, 1 = segundo jogador)
+// carta_idx     - índice da carta sendo entregue (0-based)
+// modo_computador - 1 se for modo computador, 0 se for modo 1x1
+
+// Comportamento:
+// Mostra mensagem colorida indicando entrega da carta e pausa brevemente.
+
+void animacao_entrega_cartas(int jogador, int carta_idx, int modo_computador) {
+    // Validação do índice do jogador
+    if (jogador < 0 || jogador >= MAX_JOGADORES) {
+        set_color(33); // amarelo
+        printf("Erro: índice de jogador inválido (%d). Nenhuma carta entregue.\n", jogador);
+        reset_color();
+        return;
+    }
+
+    // Define cor por jogador: 0 -> verde, 1 -> vermelho/azul dependendo do modo
+    if (jogador == 0) {
+        set_color(32); // verde para Jogador 1
+        printf("Entregando carta %d ao Jogador 1...\n", carta_idx + 1);
+    } else if (jogador == 1) {
+        if (modo_computador) {
+            set_color(31); // vermelho para Computador
+            printf("Entregando carta %d ao Computador...\n", carta_idx + 1);
+        } else {
+            set_color(34); // azul para Jogador 2
+            printf("Entregando carta %d ao Jogador 2...\n", carta_idx + 1);
+        }
+    } else {
+        set_color(33);
+        printf("Entregando carta %d ao Jogador %d...\n", carta_idx + 1, jogador + 1);
+    }
     reset_color();
+
 #ifdef _WIN32
     Sleep(200);
 #else
-    struct timespec ts = {0, 200 * 1000000};
-    nanosleep(&ts, NULL);
+    struct timespec delay = {0, 200000000}; // 200 ms
+    nanosleep(&delay, NULL);
 #endif
 }
 
-// Distribui CARTAS_POR_JOGADOR cartas para cada jogador, alternando a entrega (0..topo do baralho).
+// void para batalha jogador x jogador:
+// - Inicia uma partida entre dois jogadores humanos.
+void jogar_partida_1x1(Carta *baralho, int n_cartas, Estatisticas *estat) {
+    if (n_cartas < CARTAS_POR_JOGADOR * MAX_JOGADORES) {
+        printf("Não há cartas suficientes para iniciar a partida.\n");
+        return;
+    }
 
-void distribuir_cartas(Carta *baralho, int n_baralho, Jogador *jogadores) {
-    int total_requerido = CARTAS_POR_JOGADOR * MAX_JOGADORES;
-    if (n_baralho < total_requerido) return;
-    int idx = 0;
-    for (int i = 0; i < CARTAS_POR_JOGADOR; ++i) {
-        for (int j = 0; j < MAX_JOGADORES; ++j) {
-            jogadores[j].cartas[i] = baralho[idx++];
-            animacao_entrega_cartas(j, i);
+    // Inicializa jogadores
+    Jogador jogadores[MAX_JOGADORES];
+    for (int i = 0; i < MAX_JOGADORES; ++i) {
+        jogadores[i].cartas_restantes = 0;
+        jogadores[i].vitorias = 0;
+        jogadores[i].empates = 0;
+    }
+
+    // Embaralha e distribui cartas
+    embaralhar_cartas(baralho, n_cartas);
+    distribuir_cartas(baralho, n_cartas, jogadores, 0); // modo 1x1
+
+    // Estatísticas do turno
+    int vitorias_turno[2] = {0, 0};
+    int empates_turno = 0;
+
+    // Loop dos turnos
+    for (int turno = 0; turno < CARTAS_POR_JOGADOR; ++turno) {
+        // Exibe estado atual
+        exibe_menu_batalha();
+        for (int j = 0; j < MAX_JOGADORES; ++j) exibir_cartas_jogador(&jogadores[j], j);
+
+        // Jogador 1 escolhe uma carta
+        int cmd0 = 0;
+        int escolha1 = escolher_carta_comandos(&jogadores[0], 0, &cmd0);
+        if (cmd0 == 2) { // voltar -> abortar partida
+            limpar_buffer_stdin();
+            memset(estat, 0, sizeof(*estat));
+            printf("Retornando ao menu principal. Estatísticas da partida atual descartadas.\n");
+            return;
+        }
+        if (cmd0 == 1) {
+            // Jogador 1 desistiu do turno
+            printf("Jogador 1 desistiu do turno! Jogador 2 vence este turno.\n");
+            vitorias_turno[1]++;
+            if (jogadores[0].cartas_restantes > 0) remover_carta(&jogadores[0], 0);
+            if (jogadores[1].cartas_restantes > 0) remover_carta(&jogadores[1], 0);
+            continue;
+        }
+
+        // Jogador 2 escolhe uma carta
+        int cmd1 = 0;
+        int escolha2 = escolher_carta_comandos(&jogadores[1], 1, &cmd1);
+        if (cmd1 == 2) { // voltar -> abortar partida
+            limpar_buffer_stdin();
+            memset(estat, 0, sizeof(*estat));
+            printf("Retornando ao menu principal. Estatísticas da partida atual descartadas.\n");
+            return;
+        }
+        if (cmd1 == 1) {
+            // Jogador 2 desistiu do turno
+            printf("Jogador 2 desistiu do turno! Jogador 1 vence este turno.\n");
+            vitorias_turno[0]++;
+            if (jogadores[0].cartas_restantes > 0) remover_carta(&jogadores[0], 0);
+            if (jogadores[1].cartas_restantes > 0) remover_carta(&jogadores[1], 0);
+            continue;
+        }
+
+        // Ambos escolheram normalmente -> compara escolhas
+        float sp1 = jogadores[0].cartas[escolha1].super_poder;
+        float sp2 = jogadores[1].cartas[escolha2].super_poder;
+
+        // Exibe resultado do turno
+        exibir_resultado_turno(sp1, sp2, &vitorias_turno[0], &vitorias_turno[1], &empates_turno);
+
+        // Remove cartas jogadas (remover maior índice primeiro)
+        if (escolha1 > escolha2) {
+            remover_carta(&jogadores[0], escolha1);
+            remover_carta(&jogadores[1], escolha2);
+        } else {
+            remover_carta(&jogadores[1], escolha2);
+            remover_carta(&jogadores[0], escolha1);
         }
     }
-    for (int j = 0; j < MAX_JOGADORES; ++j) {
-        jogadores[j].cartas_restantes = CARTAS_POR_JOGADOR;
-        jogadores[j].vitorias = 0;
-        jogadores[j].empates = 0;
+
+    // Atualiza estatísticas gerais
+    estat->jogos_jogados++;
+    if (vitorias_turno[0] > vitorias_turno[1]) estat->vitorias[0]++;
+    else if (vitorias_turno[1] > vitorias_turno[0]) estat->vitorias[1]++;
+    else estat->empates++;
+
+    // Exibe resultado final da partida
+    set_color(31);
+    printf("Resultado final da partida:\n");
+    reset_color();
+
+    if (vitorias_turno[0] > vitorias_turno[1]) {
+        set_color(32);
+        printf("Jogador 1 venceu a partida!\n");
+        reset_color();
+    } else if (vitorias_turno[1] > vitorias_turno[0]) {
+        set_color(34);
+        printf("Jogador 2 venceu a partida!\n");
+        reset_color();
+    } else {
+        set_color(36);
+        printf("A partida terminou empatada!\n");
+        reset_color();
     }
 }
 
-// Exibição das cartas do jogador e seleção
+// distribuir_cartas:
+// - Distribui CARTAS_POR_JOGADOR cartas para cada jogador a partir do baralho
+// - Assinatura: void distribuir_cartas(Carta *baralho, int n_cartas, Jogador *jogadores, int modo_computador)
+// - Faz distribuição round-robin e chama animacao_entrega_cartas para feedback.
+void distribuir_cartas(Carta *baralho, int n_cartas, Jogador *jogadores, int modo_computador) {
+    int needed = CARTAS_POR_JOGADOR * MAX_JOGADORES;
+    if (n_cartas < needed) {
+        // não há cartas suficientes; inicializa estados vazios e retorna
+        for (int p = 0; p < MAX_JOGADORES; ++p) {
+            jogadores[p].cartas_restantes = 0;
+            jogadores[p].vitorias = 0;
+            jogadores[p].empates = 0;
+        }
+        return;
+    }
+
+    // Inicializa jogadores
+    for (int p = 0; p < MAX_JOGADORES; ++p) {
+        jogadores[p].cartas_restantes = 0;
+        jogadores[p].vitorias = 0;
+        jogadores[p].empates = 0;
+    }
+
+    // Distribuição round-robin (uma carta por jogador em cada rodada)
+    int idx = 0;
+    for (int c = 0; c < CARTAS_POR_JOGADOR; ++c) {
+        for (int p = 0; p < MAX_JOGADORES; ++p) {
+            jogadores[p].cartas[jogadores[p].cartas_restantes] = baralho[idx++];
+            jogadores[p].cartas_restantes++;
+            animacao_entrega_cartas(p, c, modo_computador);
+        }
+    }
+}
 
 //  exibir_cartas_jogador:
 // - Mostra as cartas atualmente na mão do jogador (resumido).
@@ -436,6 +715,22 @@ void distribuir_cartas(Carta *baralho, int n_baralho, Jogador *jogadores) {
 void exibir_cartas_jogador(const Jogador *j, int jogador_id) {
     set_color(jogador_id == 0 ? 32 : 34);
     printf("Cartas do Jogador %d:\n", jogador_id + 1);
+    for (int i = 0; i < j->cartas_restantes; ++i) {
+        printf("%d - %s | Super poder: %.2f\n", i + 1, j->cartas[i].nome_cidade, j->cartas[i].super_poder);
+    }
+    reset_color();
+}
+
+// exibir_cartas_jogador_computador:
+// - Versão especial para modo computador que mostra "Computador" em vez de "Jogador 2"
+
+void exibir_cartas_jogador_computador(const Jogador *j, int jogador_id, int eh_computador) {
+    set_color(jogador_id == 0 ? 32 : 31); // Verde para humano, vermelho para computador
+    if (eh_computador && jogador_id == 1) {
+        printf("Cartas do Computador:\n");
+    } else {
+        printf("Cartas do Jogador %d:\n", jogador_id + 1);
+    }
     for (int i = 0; i < j->cartas_restantes; ++i) {
         printf("%d - %s | Super poder: %.2f\n", i + 1, j->cartas[i].nome_cidade, j->cartas[i].super_poder);
     }
@@ -459,11 +754,11 @@ int escolher_carta(const Jogador *j, int jogador_id) {
 // - Remove a carta em índice idx do jogador (compactando o vetor).
 
 void remover_carta(Jogador *j, int idx) {
-    for (int i = idx; i < j->cartas_restantes - 1; ++i) j->cartas[i] = j->cartas[i+1];
+    if (idx < j->cartas_restantes - 1) {
+        memmove(&j->cartas[idx], &j->cartas[idx + 1], (j->cartas_restantes - idx - 1) * sizeof(Carta));
+    }
     j->cartas_restantes--;
 }
-
-// Disputa e estatísticas:
 // - Compara os super_poderes das duas cartas, exibe resultado e
 // - Ajusta contadores de vitórias/empates para o turno.
 
@@ -477,6 +772,29 @@ void exibir_resultado_turno(float sp1, float sp2, int *v1, int *v2, int *empates
         (*v2)++;
     } else {
         printf("Empate no turno!\n");
+        (*empates)++;
+    }
+}
+
+// exibir_resultado_turno_computador:
+// - Versão especial para modo computador que mostra "Computador" em vez de "Jogador 2"
+
+void exibir_resultado_turno_computador(float sp1, float sp2, int *v1, int *v2, int *empates) {
+    printf("Super poder Jogador 1: %.2f | Super poder Computador: %.2f\n", sp1, sp2);
+    if (sp1 > sp2) {
+        set_color(32); // Verde para vitória do jogador
+        printf("Jogador 1 venceu o turno!\n");
+        reset_color();
+        (*v1)++;
+    } else if (sp2 > sp1) {
+        set_color(31); // Vermelho para vitória do computador
+        printf("Computador venceu o turno!\n");
+        reset_color();
+        (*v2)++;
+    } else {
+        set_color(33); // Amarelo para empate
+        printf("Empate no turno!\n");
+        reset_color();
         (*empates)++;
     }
 }
@@ -517,6 +835,19 @@ void exibe_menu_principal() {
     printf("║ 4 - Apagar cartas                          ║\n");
     printf("║ 5 - Exibir estatísticas                    ║\n");
     printf("║ 6 - Salvar e sair                          ║\n");
+    printf("╚════════════════════════════════════════════╝\n");
+    reset_color();
+}
+
+// exibe_menu_modo_de_jogo: mostra opções antes de iniciar a batalha
+
+void exibe_menu_antes_do_batalha() {
+    set_color(35);
+    printf("╔════════════════════════════════════════════╗\n");
+    printf("║                MODO DE JOGO                ║\n");
+    printf("╚════════════════════════════════════════════╝\n");
+    printf("║ 1 - Modo de Jogo: 1x1                      ║\n");
+    printf("║ 2 - Modo de Jogo: 1xComputador             ║\n");
     printf("╚════════════════════════════════════════════╝\n");
     reset_color();
 }
@@ -581,119 +912,29 @@ static int escolher_carta_comandos(Jogador *j, int jogador_id, int *cmd) {
     }
 }
 
-    // Iniciar uma partida entre dois jogadores
-    void jogar_partida(Carta *baralho, int n_cartas, Estatisticas *estat) {
-    if (n_cartas < CARTAS_POR_JOGADOR * MAX_JOGADORES) {
-        printf("Não há cartas suficientes para iniciar a partida.\n");
-        return;
-    }
-
-    // Inicializa jogadores
-    Jogador jogadores[MAX_JOGADORES];
-    for (int i = 0; i < MAX_JOGADORES; ++i) {
-        jogadores[i].cartas_restantes = 0;
-        jogadores[i].vitorias = 0;
-        jogadores[i].empates = 0;
-    }
-
-    // Embaralha e distribui cartas
-    embaralhar_cartas(baralho, n_cartas);
-    // Distribui cartas para os jogadores
-    distribuir_cartas(baralho, n_cartas, jogadores);
-
-    // Estatísticas do turno
-    int vitorias_turno[2] = {0, 0};
-    int empates_turno = 0;
-
-    // Loop dos turnos
-    for (int turno = 0; turno < CARTAS_POR_JOGADOR; ++turno) {
-
-    // Exibe estado atual
-    exibe_menu_batalha();
-    for (int j = 0; j < MAX_JOGADORES; ++j) exibir_cartas_jogador(&jogadores[j], j);
-
-    // Cada jogador escolhe uma carta (agora com suporte a comandos)
-    int cmd0 = 0, cmd1 = 0;
-    int escolha1 = escolher_carta_comandos(&jogadores[0], 0, &cmd0);
-    if (cmd0 == 2) { // voltar -> abortar partida, limpar buffer e estatísticas e voltar ao menu principal
-            limpar_buffer_stdin();
-            memset(estat, 0, sizeof(*estat));
-            printf("Retornando ao menu principal. Estatísticas da partida atual descartadas.\n");
+// Iniciar uma partida abre menu de modo de jogo e executa a batalha
+void jogar_partida(Carta *baralho, int n_cartas, Estatisticas *estat) {
+    exibe_menu_antes_do_batalha();
+    int modo;
+    while (1) {
+        modo = ler_inteiro_prompt("Escolha o modo: ");
+        if (modo == 1) {
+            jogar_partida_1x1(baralho, n_cartas, estat);
             return;
-    }
-    if (cmd0 == 1) {
-
-    // Jogador 1 desistiu do turno
-    printf("Jogador 1 desistiu do turno! Jogador 2 vence este turno.\n");
-    vitorias_turno[1]++;
-
-    // Remove a primeira carta de cada jogador (simula cartas jogadas)
-    if (jogadores[0].cartas_restantes > 0) remover_carta(&jogadores[0], 0);
-    if (jogadores[1].cartas_restantes > 0) remover_carta(&jogadores[1], 0);
-    continue; // próximo turno
-    }
-
-    // Jogador 1 escolheu normalmente, agora Jogador 2
-    int escolha2 = escolher_carta_comandos(&jogadores[1], 1, &cmd1);
-    if (cmd1 == 2) { // voltar -> abortar partida, limpar buffer e estatísticas e voltar ao menu principal
-    limpar_buffer_stdin();
-    memset(estat, 0, sizeof(*estat));
-    printf("Retornando ao menu principal. Estatísticas da partida atual descartadas.\n");
-    return;
-    }
-    if (cmd1 == 1) {
-    
-    // Jogador 2 desistiu do turno
-    printf("Jogador 2 desistiu do turno! Jogador 1 vence este turno.\n");
-    vitorias_turno[0]++;
-    if (jogadores[0].cartas_restantes > 0) remover_carta(&jogadores[0], 0);
-    if (jogadores[1].cartas_restantes > 0) remover_carta(&jogadores[1], 0);
-    continue; // próximo turno
-    }
-
-    // Ambos escolheram normalmente -> compara escolhas
-    float sp1 = jogadores[0].cartas[escolha1].super_poder;
-    float sp2 = jogadores[1].cartas[escolha2].super_poder;
-
-    // Exibe resultado do turno
-    exibir_resultado_turno(sp1, sp2, &vitorias_turno[0], &vitorias_turno[1], &empates_turno);
-
-    // Remove cartas jogadas (atenção aos índices após remoção do primeiro)
-    remover_carta(&jogadores[0], escolha1);
-    remover_carta(&jogadores[1], escolha2);
-    }
-
-    // Atualiza estatísticas gerais
-    estat->jogos_jogados++;
-
-    // Atualiza vitórias/empates entre partidas
-    if (vitorias_turno[0] > vitorias_turno[1]) estat->vitorias[0]++;
-    else if (vitorias_turno[1] > vitorias_turno[0]) estat->vitorias[1]++;
-    else estat->empates++;
-
-    // Exibe resultado final da partida
-    set_color(31);
-    printf("Resultado final da partida:\n");
-    reset_color();
-
-    if (vitorias_turno[0] > vitorias_turno[1]) {
-        set_color(32);
-        printf("Jogador 1 venceu a partida!\n");
-        reset_color();
-    } else if (vitorias_turno[1] > vitorias_turno[0]) {
-        set_color(34);
-        printf("Jogador 2 venceu a partida!\n");
-        reset_color();
-    } else {
-        set_color(36);
-        printf("A partida terminou empatada!\n");
-        reset_color();
+        }
+        if (modo == 2) {
+            jogar_partida_1xComputador(baralho, n_cartas, estat);
+            return;
+        }
+        if (modo < 1 || modo > 2) {
+            printf("Modo inválido! Escolha 1 (1x1) ou 2 (1xComputador).\n");
+        }
     }
 }
 
-// main principal do programa
-
+// main: loop principal do programa
 int main(void) {
+    srand((unsigned)time(NULL));
 
     Carta cartas[MAX_CARTAS];
     memset(cartas, 0, sizeof(cartas));
